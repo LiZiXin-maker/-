@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电容器充、放电动画演示</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: #dbeafe;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 48px;
+            box-shadow: 0 30px 50px rgba(0, 30, 60, 0.25);
+            padding: 30px 30px 40px;
+            max-width: 1300px;
+            width: fit-content;
+        }
+        h2 {
+            text-align: center;
+            font-weight: 400;
+            color: #0f3b5a;
+            margin: 0 0 20px;
+            font-size: 2.2rem;
+            border-bottom: 3px solid #b0c9ed;
+            padding-bottom: 10px;
+        }
+        .canvas-wrapper {
+            background: #f4faff;
+            border-radius: 36px;
+            padding: 20px;
+            box-shadow: inset 0 3px 10px rgba(0,0,0,0.03), 0 20px 30px rgba(0,35,70,0.15);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            background: white;
+            border-radius: 28px;
+            border: 2px solid #a0bde0;
+        }
+        .button-bar {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        .mode-btn {
+            background: #e9f2ff;
+            border: none;
+            padding: 14px 48px;
+            border-radius: 80px;
+            font-size: 1.7rem;
+            font-weight: 500;
+            color: #113750;
+            box-shadow: 0 6px 10px #8aa6c9, 0 2px 4px white inset;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: 0.12s;
+            border: 1px solid white;
+        }
+        .mode-btn.charge {
+            background: #ffe8da;
+            color: #aa3a00;
+        }
+        .mode-btn.discharge {
+            background: #e0f5ea;
+            color: #0f622f;
+        }
+        .mode-btn.off {
+            background: #d2dbe8;
+            color: #2f4d73;
+        }
+        .mode-btn:hover {
+            transform: scale(1.02);
+            background: #deecff;
+        }
+        .mode-btn:active {
+            transform: scale(0.97);
+            box-shadow: 0 2px 6px #7e9ac0 inset;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 50px;
+            margin-top: 24px;
+            background: #e2efff;
+            padding: 12px 40px;
+            border-radius: 60px;
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .current-arrow {
+            width: 36px;
+            height: 6px;
+            background: #c4283c;
+            border-radius: 6px;
+            position: relative;
+        }
+        .current-arrow::after {
+            content: '';
+            position: absolute;
+            right: -8px;
+            top: -8px;
+            border-left: 12px solid #c4283c;
+            border-top: 8px solid transparent;
+            border-bottom: 8px solid transparent;
+        }
+        footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #2e5480;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2>⚡ 电容器充、放电动画演示 ⚡</h2>
+
+    <div class="canvas-wrapper">
+        <canvas id="circuitCanvas" width="1300" height="750"></canvas>
+    </div>
+
+    <div class="button-bar">
+        <button class="mode-btn charge" id="chargeBtn">🔴 充电 (开关左)</button>
+        <button class="mode-btn off" id="stopBtn">⏹️ 断开</button>
+        <button class="mode-btn discharge" id="dischargeBtn">🔵 放电 (开关右)</button>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><i class="current-arrow"></i> <span>电流方向</span></div>
+        <div class="legend-item"><span style="display:inline-block; width:26px; height:26px; background:#f5eac1; border:2px solid #b0761a; border-radius:50%;"></span> <span>小灯泡 L</span></div>
+        <div class="legend-item"><span style="border-bottom: 5px solid #1f3a5f; width:35px;"></span> <span>电容器 C</span></div>
+    </div>
+
+    <footer>电源正极在上(长100px) 负极在下(长60px) · 中间无连接线 · 公共端先右再上再右接上组</footer>
+</div>
+
+<script>
+(function() {
+    const canvas = document.getElementById('circuitCanvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+
+    // ================= 坐标系统 =================
+    const powerX = 400;
+    // 电源正极 (在上)
+    const posY = 450;
+    // 电源负极 (在下)
+    const negY = 500;
+    const posLen = 100;
+    const negLen = 60;
+    const batPosLeft  = { x: powerX - posLen/2, y: posY };
+    const batPosRight = { x: powerX + posLen/2, y: posY };
+    const batNegLeft  = { x: powerX - negLen/2, y: negY };
+    const batNegRight = { x: powerX + negLen/2, y: negY };
+
+    // 电源引出点 (直接使用中点，无小圆)
+    const posOut = { x: powerX, y: posY };
+    const negOut = { x: powerX, y: negY };
+
+    // 开关
+    const swLeft   = { x: powerX, y: 300 };
+    const swCommon = { x: 550, y: 300 };
+    const swRight  = { x: 550, y: 400 };
+
+    // 上方二极管组
+    const upRect = { left: 700, right: 880, top: 200, bottom: 280 };
+    const upLeftMid  = { x: upRect.left,  y: (upRect.top + upRect.bottom)/2 }; // 240
+    const upRightMid = { x: upRect.right, y: (upRect.top + upRect.bottom)/2 }; // 240
+
+    // 上方二极管
+    const d1Start = { x: upRect.left + 50, y: upRect.top };    // 750,200
+    const d1End   = { x: upRect.left + 130, y: upRect.top };   // 830,200
+    const d2Start = { x: upRect.right - 50, y: upRect.bottom }; // 830,280
+    const d2End   = { x: upRect.right - 130, y: upRect.bottom }; // 750,280
+
+    // 下方二极管组
+    const downRect = { left: 700, right: 880, top: 540, bottom: 620 };
+    const downLeftMid  = { x: downRect.left,  y: (downRect.top + downRect.bottom)/2 }; // 580
+    const downRightMid = { x: downRect.right, y: (downRect.top + downRect.bottom)/2 }; // 580
+
+    // 下方二极管
+    const d3Start = { x: downRect.left + 50, y: downRect.top };    // 750,540
+    const d3End   = { x: downRect.left + 130, y: downRect.top };   // 830,540
+    const d4Start = { x: downRect.right - 50, y: downRect.bottom }; // 830,620
+    const d4End   = { x: downRect.right - 130, y: downRect.bottom }; // 750,620
+
+    // 电容器
+    const capPosY = 320;
+    const capNegY = 400;
+    const capLeftX = 960, capRightX = 1060;
+    const capPosCenter = { x: (capLeftX + capRightX)/2, y: capPosY }; // 1010,320
+    const capNegCenter = { x: (capLeftX + capRightX)/2, y: capNegY }; // 1010,400
+
+    // 小灯泡
+    const lampPos = { x: 550, y: 500 };
+    const lampR = 25;
+    const lampTop = { x: lampPos.x, y: lampPos.y - lampR };    // 550,475
+    const lampBottom = { x: lampPos.x, y: lampPos.y + lampR }; // 550,525
+
+    // ========== 固定导线路径 ==========
+    // 电源正极 -> 左触点 (竖直向上)
+    const posToSwLeft = [ posOut, swLeft ];
+
+    // 电源负极 -> 下方组左中点 (先竖直向下到 y=580, 再水平向右)
+    const negToDownLeft = [
+        negOut,                       // (400,450)
+        { x: negOut.x, y: downLeftMid.y }, // (400,580)
+        { x: downLeftMid.x, y: downLeftMid.y } // (700,580)
+    ];
+
+    // 开关公共端 -> 上方组左中点 (先向右到600，再向上到240，再向右到700)
+    const swCommonToUpLeft = [
+        swCommon,                     // (550,300)
+        { x: 600, y: swCommon.y },    // (600,300) 向右
+        { x: 600, y: upLeftMid.y },   // (600,240) 向上
+        { x: upLeftMid.x, y: upLeftMid.y } // (700,240) 向右
+    ];
+
+    // 右触点 -> 小灯泡上方 (竖直向下)
+    const swRightToLampTop = [ swRight, lampTop ]; // (550,400) -> (550,475)
+
+    // 小灯泡下方 -> 水平线 (竖直向下到 y=580)
+    const lampBottomToHoriz = [ lampBottom, { x: lampBottom.x, y: downLeftMid.y } ]; // (550,525) -> (550,580)
+
+    // 上方组右中点 -> 电容正极 (先水平右到 x=1010, 再竖直向下)
+    const upRightToCapPos = [
+        upRightMid,                   // (880,240)
+        { x: capPosCenter.x, y: upRightMid.y }, // (1010,240)
+        capPosCenter                    // (1010,320)
+    ];
+
+    // 下方组右中点 -> 电容负极 (先水平右到 x=1010, 再竖直向上)
+    const downRightToCapNeg = [
+        downRightMid,                 // (880,580)
+        { x: capNegCenter.x, y: downRightMid.y }, // (1010,580)
+        capNegCenter                    // (1010,400)
+    ];
+
+    // ========== 二极管绘制 ==========
+    function drawDiode(x1, y1, x2, y2, label, isGlow) {
+        ctx.save();
+        let angle = Math.atan2(y2 - y1, x2 - x1);
+        let d = 22;
+        let mx = (x1 + x2) / 2;
+        let my = (y1 + y2) / 2;
+
+        let tipX = mx + d * 0.6 * Math.cos(angle);
+        let tipY = my + d * 0.6 * Math.sin(angle);
+        let backX = mx - d * 0.4 * Math.cos(angle);
+        let backY = my - d * 0.4 * Math.sin(angle);
+        let perpX = -Math.sin(angle) * 8;
+        let perpY = Math.cos(angle) * 8;
+
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(backX + perpX, backY + perpY);
+        ctx.lineTo(backX - perpX, backY - perpY);
+        ctx.closePath();
+
+        if (isGlow) {
+            ctx.fillStyle = '#ffdd55';
+            ctx.shadowColor = '#ffaa00';
+            ctx.shadowBlur = 12;
+        } else {
+            ctx.fillStyle = 'white';
+        }
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#1f3a5f';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 负极竖线 (画在三角形顶部)
+        let lineX = mx + d * 0.3 * Math.cos(angle);
+        let lineY = my + d * 0.3 * Math.sin(angle);
+        let linePerpX = -Math.sin(angle) * 10;
+        let linePerpY = Math.cos(angle) * 10;
+
+        ctx.beginPath();
+        ctx.moveTo(lineX + linePerpX, lineY + linePerpY);
+        ctx.lineTo(lineX - linePerpX, lineY - linePerpY);
+        ctx.strokeStyle = '#1f3a5f';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#0f2a40';
+        ctx.font = 'bold 14px "Segoe UI"';
+        ctx.fillText(label, mx - 20, my - 25);
+        ctx.restore();
+    }
+
+    // 绘制静态电路
+    function drawStaticParts(mode) {
+        ctx.clearRect(0, 0, w, h);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#1f3a5f';
+        ctx.fillStyle = 'white';
+
+        // 电源正负极线 (两条独立水平线，中间无连接)
+        ctx.beginPath();
+        ctx.moveTo(batPosLeft.x, batPosLeft.y);
+        ctx.lineTo(batPosRight.x, batPosRight.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(batNegLeft.x, batNegLeft.y);
+        ctx.lineTo(batNegRight.x, batNegRight.y);
+        ctx.stroke();
+        ctx.fillStyle = '#103450';
+        ctx.font = 'bold 26px "Segoe UI"';
+        ctx.fillText('+', batPosRight.x + 15, batPosRight.y - 8);
+        ctx.fillText('−', batNegRight.x + 15, batNegRight.y + 8);
+
+        // 绘制所有固定导线 (无电源连接点小圆)
+        function drawPath(points) {
+            if (points.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i++) {
+                ctx.lineTo(points[i].x, points[i].y);
+            }
+            ctx.stroke();
+        }
+
+        drawPath(posToSwLeft);
+        drawPath(negToDownLeft);
+        drawPath(swCommonToUpLeft);
+        drawPath(swRightToLampTop);
+        drawPath(lampBottomToHoriz);
+        drawPath(upRightToCapPos);
+        drawPath(downRightToCapNeg);
+
+        // 开关静触点圆圈
+        [swLeft, swRight, swCommon].forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 8, 0, 2*Math.PI);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            ctx.stroke();
+        });
+        ctx.fillStyle = '#1f3a5f';
+        ctx.font = 'bold 22px "Segoe UI"';
+        ctx.fillText('S', swCommon.x - 45, swCommon.y - 25);
+
+        // 开关刀 (根据模式)
+        ctx.beginPath();
+        ctx.strokeStyle = '#1f3a5f';
+        ctx.lineWidth = 5;
+        if (mode === 'charge') {
+            ctx.moveTo(swCommon.x, swCommon.y);
+            ctx.lineTo(swLeft.x, swLeft.y);
+        } else if (mode === 'discharge') {
+            ctx.moveTo(swCommon.x, swCommon.y);
+            ctx.lineTo(swRight.x, swRight.y);
+        } else {
+            ctx.moveTo(swCommon.x, swCommon.y);
+            ctx.lineTo(swCommon.x - 25, swCommon.y - 20);
+        }
+        ctx.stroke();
+        ctx.lineWidth = 3;
+
+        // 二极管矩形边框
+        ctx.strokeRect(upRect.left, upRect.top, upRect.right - upRect.left, upRect.bottom - upRect.top);
+        ctx.strokeRect(downRect.left, downRect.top, downRect.right - downRect.left, downRect.bottom - downRect.top);
+
+        // 电容器极板
+        ctx.beginPath();
+        ctx.lineWidth = 5;
+        ctx.moveTo(capLeftX, capPosY);
+        ctx.lineTo(capRightX, capPosY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(capLeftX, capNegY);
+        ctx.lineTo(capRightX, capNegY);
+        ctx.stroke();
+        ctx.fillStyle = '#1f3a5f';
+        ctx.font = 'bold 22px "Segoe UI"';
+        ctx.fillText('C', capRightX + 25, (capPosY + capNegY)/2);
+        ctx.fillText('+', capLeftX - 30, capPosY - 5);
+        ctx.fillText('-', capLeftX - 30, capNegY + 8);
+
+        // 小灯泡
+        ctx.beginPath();
+        ctx.arc(lampPos.x, lampPos.y, lampR, 0, 2*Math.PI);
+        ctx.strokeStyle = '#b0761a';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.fillStyle = '#fef7e0';
+        ctx.fill();
+        // 画X
+        ctx.beginPath();
+        ctx.moveTo(lampPos.x - 15, lampPos.y - 15);
+        ctx.lineTo(lampPos.x + 15, lampPos.y + 15);
+        ctx.moveTo(lampPos.x + 15, lampPos.y - 15);
+        ctx.lineTo(lampPos.x - 15, lampPos.y + 15);
+        ctx.strokeStyle = '#b0761a';
+        ctx.stroke();
+        ctx.fillStyle = '#1f3a5f';
+        ctx.font = 'bold 18px "Segoe UI"';
+        ctx.fillText('L', lampPos.x - 32, lampPos.y - 30);
+    }
+
+    // 绘制二极管并高亮
+    function drawDiodesWithGlow(glowSet) {
+        drawDiode(d1Start.x, d1Start.y, d1End.x, d1End.y, 'D1', glowSet.has('D1'));
+        drawDiode(d2Start.x, d2Start.y, d2End.x, d2End.y, 'D2', glowSet.has('D2'));
+        drawDiode(d3Start.x, d3Start.y, d3End.x, d3End.y, 'D3', glowSet.has('D3'));
+        drawDiode(d4Start.x, d4Start.y, d4End.x, d4End.y, 'D4', glowSet.has('D4'));
+    }
+
+    // 灯泡高亮
+    function drawLampGlow(glow) {
+        if (!glow) return;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(lampPos.x, lampPos.y, lampR, 0, 2*Math.PI);
+        ctx.fillStyle = '#ffdd55';
+        ctx.globalAlpha = 0.5;
+        ctx.fill();
+        ctx.restore();
+        // 重画边框和X
+        ctx.beginPath();
+        ctx.arc(lampPos.x, lampPos.y, lampR, 0, 2*Math.PI);
+        ctx.strokeStyle = '#b0761a';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(lampPos.x - 15, lampPos.y - 15);
+        ctx.lineTo(lampPos.x + 15, lampPos.y + 15);
+        ctx.moveTo(lampPos.x + 15, lampPos.y - 15);
+        ctx.lineTo(lampPos.x - 15, lampPos.y + 15);
+        ctx.strokeStyle = '#b0761a';
+        ctx.stroke();
+    }
+
+    // ========== 充放电路径 ==========
+    const chargeSegments = [
+        // 电源正极 -> 左触点
+        { x1: posOut.x, y1: posOut.y+8, x2: swLeft.x, y2: swLeft.y, dir: 'up' },
+        // 左触点 -> 公共触点
+        { x1: swLeft.x, y1: swLeft.y, x2: swCommon.x, y2: swCommon.y, dir: 'right' },
+        // 公共触点 -> 上方组左中点 (先右再上再右)
+        { x1: swCommon.x, y1: swCommon.y, x2: 600, y2: swCommon.y, dir: 'right' },
+        { x1: 600, y1: swCommon.y, x2: 600, y2: upLeftMid.y, dir: 'up' },
+        { x1: 600, y1: upLeftMid.y, x2: upLeftMid.x, y2: upLeftMid.y, dir: 'right' },
+        // 进入上方组, 经过D1 (上边)
+        { x1: upLeftMid.x, y1: upLeftMid.y, x2: upLeftMid.x, y2: upRect.top, dir: 'up' },        // 上到上边
+        { x1: upLeftMid.x, y1: upRect.top, x2: d1Start.x, y2: upRect.top, dir: 'right' },         // 到D1起点
+        { x1: d1Start.x, y1: upRect.top, x2: d1End.x, y2: upRect.top, dir: 'right' },             // 经过D1
+        { x1: d1End.x, y1: upRect.top, x2: upRightMid.x, y2: upRect.top, dir: 'right' },          // 到右上角
+        { x1: upRightMid.x, y1: upRect.top, x2: upRightMid.x, y2: upRightMid.y, dir: 'down' },    // 下到右中点
+        // 到电容正极 (先水平右再竖直下)
+        { x1: upRightMid.x, y1: upRightMid.y, x2: capPosCenter.x, y2: upRightMid.y, dir: 'right' },
+        { x1: capPosCenter.x, y1: upRightMid.y, x2: capPosCenter.x, y2: capPosCenter.y, dir: 'down' }, // 到正极
+        // 从电容负极开始
+        { x1: capNegCenter.x, y1: capNegCenter.y, x2: capNegCenter.x, y2: downRightMid.y, dir: 'down' },
+        { x1: capNegCenter.x, y1: downRightMid.y, x2: downRightMid.x, y2: downRightMid.y, dir: 'left' },
+        // 进入下方组, 经过D4 (下边)
+        { x1: downRightMid.x, y1: downRightMid.y, x2: downRightMid.x, y2: downRect.bottom, dir: 'down' }, // 到下边
+        { x1: downRightMid.x, y1: downRect.bottom, x2: d4Start.x, y2: downRect.bottom, dir: 'left' },     // 到D4起点
+        { x1: d4Start.x, y1: downRect.bottom, x2: d4End.x, y2: downRect.bottom, dir: 'left' },             // 经过D4
+        { x1: d4End.x, y1: downRect.bottom, x2: downLeftMid.x, y2: downRect.bottom, dir: 'left' },        // 到左下角
+        { x1: downLeftMid.x, y1: downRect.bottom, x2: downLeftMid.x, y2: downLeftMid.y, dir: 'up' },      // 上到左中点
+        // 到电源负极 (先水平左, 再竖直上)
+        { x1: downLeftMid.x, y1: downLeftMid.y-8, x2: 400, y2: downLeftMid.y, dir: 'left' },            // 水平左到x=400
+        { x1: 400, y1: downLeftMid.y, x2: negOut.x, y2: negOut.y, dir: 'up' }                         // 竖直上到负极
+    ];
+
+    const dischargeSegments = [
+        // 电容正极开始
+        { x1: capPosCenter.x, y1: capPosCenter.y, x2: capPosCenter.x, y2: upRightMid.y, dir: 'up' },
+        { x1: capPosCenter.x, y1: upRightMid.y, x2: upRightMid.x, y2: upRightMid.y, dir: 'left' },
+        // 进入上方组, 经过D2 (下边)
+        { x1: upRightMid.x, y1: upRightMid.y, x2: upRightMid.x, y2: upRect.bottom, dir: 'down' },     // 到下边
+        { x1: upRightMid.x, y1: upRect.bottom, x2: d2Start.x, y2: upRect.bottom, dir: 'left' },        // 到D2起点
+        { x1: d2Start.x, y1: upRect.bottom, x2: d2End.x, y2: upRect.bottom, dir: 'left' },             // 经过D2
+        { x1: d2End.x, y1: upRect.bottom, x2: upLeftMid.x, y2: upRect.bottom, dir: 'left' },           // 到左下角
+        { x1: upLeftMid.x, y1: upRect.bottom, x2: upLeftMid.x, y2: upLeftMid.y, dir: 'up' },           // 上到左中点
+        // 到开关公共端 (左到600, 下到300, 左到550)
+        { x1: upLeftMid.x, y1: upLeftMid.y, x2: 600, y2: upLeftMid.y, dir: 'left' },                  // 左到600
+        { x1: 600, y1: upLeftMid.y, x2: 600, y2: swCommon.y, dir: 'down' },                          // 下到300
+        { x1: 600, y1: swCommon.y, x2: swCommon.x, y2: swCommon.y, dir: 'left' },                    // 左到公共端
+        // 公共触点 -> 右触点
+        { x1: swCommon.x, y1: swCommon.y, x2: swRight.x, y2: swRight.y, dir: 'down' },
+        // 右触点 -> 小灯泡上方
+        { x1: swRight.x, y1: swRight.y, x2: lampTop.x, y2: lampTop.y, dir: 'down' },
+        // 从灯泡下方开始
+        { x1: lampBottom.x, y1: lampBottom.y, x2: lampBottom.x, y2: downLeftMid.y, dir: 'down' },     // 到水平线
+        // 沿水平线到下方组左中点
+        { x1: lampBottom.x, y1: downLeftMid.y, x2: downLeftMid.x, y2: downLeftMid.y, dir: 'right' },
+        // 进入下方组, 经过D3 (上边)
+        { x1: downLeftMid.x, y1: downLeftMid.y, x2: downLeftMid.x, y2: downRect.top, dir: 'up' },      // 到上边
+        { x1: downLeftMid.x, y1: downRect.top, x2: d3Start.x, y2: downRect.top, dir: 'right' },        // 到D3起点
+        { x1: d3Start.x, y1: downRect.top, x2: d3End.x, y2: downRect.top, dir: 'right' },              // 经过D3
+        { x1: d3End.x, y1: downRect.top, x2: downRightMid.x, y2: downRect.top, dir: 'right' },         // 到右上角
+        { x1: downRightMid.x, y1: downRect.top, x2: downRightMid.x, y2: downRightMid.y, dir: 'down' }, // 下到右中点
+        // 到电容负极 (先水平右再竖直上)
+        { x1: downRightMid.x, y1: downRightMid.y, x2: capNegCenter.x, y2: downRightMid.y, dir: 'right' },
+        { x1: capNegCenter.x, y1: downRightMid.y, x2: capNegCenter.x, y2: capNegCenter.y, dir: 'up' }
+    ];
+
+    // 动画变量
+    let animFrame;
+    let currentMode = 'idle';
+    let switchStartTime = performance.now();
+    const BASE_SPEED = 0.08;
+    const DECAY_TIME = 3000;
+
+    function drawMovingArrow(seg, offset, alpha) {
+        const { x1, y1, x2, y2, dir } = seg;
+        const len = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+        if (len < 2) return;
+        const t = (offset % len) / len;
+        const x = x1 + (x2 - x1) * t;
+        const y = y1 + (y2 - y1) * t;
+
+        const arrowSize = 18;
+        ctx.fillStyle = '#c4283c';
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        if (dir === 'right') {
+            ctx.moveTo(x - 10, y - 8);
+            ctx.lineTo(x + arrowSize, y);
+            ctx.lineTo(x - 10, y + 8);
+        } else if (dir === 'left') {
+            ctx.moveTo(x + 10, y - 8);
+            ctx.lineTo(x - arrowSize, y);
+            ctx.lineTo(x + 10, y + 8);
+        } else if (dir === 'up') {
+            ctx.moveTo(x - 8, y + 10);
+            ctx.lineTo(x, y - arrowSize);
+            ctx.lineTo(x + 8, y + 10);
+        } else if (dir === 'down') {
+            ctx.moveTo(x - 8, y - 10);
+            ctx.lineTo(x, y + arrowSize);
+            ctx.lineTo(x + 8, y - 10);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+
+    function animate() {
+        const now = performance.now();
+        ctx.clearRect(0, 0, w, h);
+
+        drawStaticParts(currentMode);
+
+        const glowDiodes = new Set();
+        let lampGlow = false;
+        if (currentMode === 'charge') {
+            glowDiodes.add('D1');
+            glowDiodes.add('D4');
+            lampGlow = false;
+        } else if (currentMode === 'discharge') {
+            glowDiodes.add('D2');
+            glowDiodes.add('D3');
+            lampGlow = true;
+        }
+
+        drawDiodesWithGlow(glowDiodes);
+        if (lampGlow) drawLampGlow(true);
+
+        if (currentMode !== 'idle') {
+            const elapsed = now - switchStartTime;
+            let alpha = Math.exp(-elapsed / DECAY_TIME);
+            if (alpha < 0.01) alpha = 0;
+            if (alpha > 0) {
+                const segments = currentMode === 'charge' ? chargeSegments : dischargeSegments;
+                const offset = elapsed * BASE_SPEED;
+                segments.forEach(seg => {
+                    drawMovingArrow(seg, offset, alpha);
+                });
+            }
+        }
+
+        animFrame = requestAnimationFrame(animate);
+    }
+
+    animate();
+
+    document.getElementById('chargeBtn').addEventListener('click', () => {
+        if (currentMode !== 'charge') {
+            currentMode = 'charge';
+            switchStartTime = performance.now();
+        }
+    });
+    document.getElementById('dischargeBtn').addEventListener('click', () => {
+        if (currentMode !== 'discharge') {
+            currentMode = 'discharge';
+            switchStartTime = performance.now();
+        }
+    });
+    document.getElementById('stopBtn').addEventListener('click', () => {
+        currentMode = 'idle';
+    });
+
+    window.addEventListener('beforeunload', () => {
+        if (animFrame) cancelAnimationFrame(animFrame);
+    });
+})();
+</script>
+</body>
+</html>
